@@ -12,9 +12,19 @@ sbu_sim
 Provide simulated detectors for reduced data from XPD for Chen-Wiegart group at SBU
 
 * Free software: 3-clause BSD license
-* Documentation: (COMING SOON!) https://nslsii.github.io/sbu_sim.
+* Documentation: (COMING SOON!)
+
+To use ::
+
+  import sbu_sim
+  # change the third argument to where you unpacked the TiCu data
+  sbu_sim.initialize(get_ipython().user_ns, 'temp', 'xpd_auto_202003_msgpack');
+  # run a scan varying the titanium and getting back area-under-peak values
+  RE(bp.scan([rois, ctrl], ctrl.Ti, 0, 100, 25))
+  # run a scan varying the titanium and getting back the full I(Q) at each point
+  RE(bp.scan([full, ctrl], ctrl.Ti, 0, 100, 25))
 
 Features
 --------
 
-* TODO
+* Provides
