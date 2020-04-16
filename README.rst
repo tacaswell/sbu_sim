@@ -24,7 +24,14 @@ To use ::
   # run a scan varying the titanium and getting back the full I(Q) at each point
   RE(bp.scan([full, ctrl], ctrl.Ti, 0, 100, 25))
 
-Features
---------
 
-* Provides
+To get the TiCu data you will need to get a copy of the packed data (left
+as an exercise for the reader).  Once you have unzipped it do
+
+.. code:: bash
+
+   pip install databroker-pack
+   databroker-unpack path/to/unpacked/tarbal xpd_auto_202003_msgpack
+
+
+See https://blueskyproject.io/databroker-pack/
