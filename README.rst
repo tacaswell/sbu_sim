@@ -14,7 +14,9 @@ Provide simulated detectors for reduced data from XPD for Chen-Wiegart group at 
 * Free software: 3-clause BSD license
 * Documentation: (COMING SOON!)
 
-To use ::
+To use
+
+.. code:: python
 
   import sbu_sim
   # change the third argument to where you unpacked the TiCu data
