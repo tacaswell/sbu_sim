@@ -14,7 +14,7 @@ Provide simulated detectors for reduced data from XPD for Chen-Wiegart group at 
 * Free software: 3-clause BSD license
 * Documentation: (COMING SOON!)
 
-To use
+To use in an ``IPython`` session
 
 .. code:: python
 
