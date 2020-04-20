@@ -181,7 +181,7 @@ def make_ROI_detector(ctrl, peak_locations, reduce_function, *, cat, name):
     # ######
 
     # helpers to do the resampling on demand:
-    @functools.lru_cache
+    @functools.lru_cache()
     def _base_resample(target):
         # target = np.array(target)
         return reduced_interpolation(target).squeeze()
