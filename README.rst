@@ -14,6 +14,16 @@ Provide simulated detectors for reduced data from XPD for Chen-Wiegart group at 
 * Free software: 3-clause BSD license
 * Documentation: (COMING SOON!)
 
+To install this simulator
+
+.. code:: bash
+
+   # activate your env
+   cd where/you/checked/out/sbu_sim
+   pip install .
+   cd
+
+
 To use in an ``IPython`` session
 
 .. code:: python
