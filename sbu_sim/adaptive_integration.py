@@ -9,7 +9,7 @@ def sort_out_motor(motors, next_point):
     return list(itertools.chain(*zip(motors, next_point)))
 
 
-class DummyCam:
+class DummyAdaptive:
     def __init__(self, sequence):
         self.sequence = itertools.cycle(sequence)
 
