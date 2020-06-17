@@ -194,27 +194,29 @@ def intra_plan_step_factory(
         is always returned (even if the user passed it in).
 
     """
+    from event_model import RunRouter
+
     if queue is None:
         queue = Queue()
 
     def callback(name, doc):
-
         # TODO handle multi-stream runs!
-        if name == "event":
-            if doc["seq_num"] > max_count:
+        if name == "event_page":
+            if doc["seq_num"][-1] > max_count:
                 # if at max number of points poison the queue and return early
                 queue.put(None)
                 return
             payload = doc["data"]
             # This is your "motor positions"
-            independent = np.asarray([payload[k] for k in endogenous_keys])
+            independent = np.asarray([payload[k][-1] for k in endogenous_keys])
             # This is the extracted measurements
-            measurement = np.asarray([payload[k] for k in exogenous_keys])
+            measurement = np.asarray([payload[k][-1] for k in exogenous_keys])
             # call something to get next point!
             next_point = independent + step
             queue.put({k: v for k, v in zip(endogenous_keys, next_point)})
 
-    return callback, queue
+    rr = RunRouter([lambda name, doc: ([callback], [])])
+    return rr, queue
 
 
 def intra_plan_gpcam_factory(
