@@ -367,7 +367,7 @@ def per_event_adaptive_plan(
             target = {m: next_point[m.name] for m in motors}
             motor_position_pairs = itertools.chain(*target.items())
             yield from bps.mov(*motor_position_pairs)
-            yield from take_reading(dets + motors)
+            yield from take_reading(dets + motors, name='primary')
             next_point = from_brains.get(timeout=1)
             if next_point is None:
                 return
