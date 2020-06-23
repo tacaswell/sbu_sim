@@ -1,5 +1,6 @@
 """Tools to integrate adaptive decsion making with Bluesky."""
 from collections import deque
+import uuid
 import itertools
 from queue import Queue
 
@@ -387,44 +388,106 @@ def per_event_adaptive_plan(
 # data collection.
 
 
-def inter_run_factory_sequence(endogenous_keys, exogenous_keys, *, max_count=10):
-    queue = deque()
-    count = 0
+def per_start_step_factory(
+    step, independent_keys, dependent_keys, *, max_count=10, queue=None
+):
+    from event_model import RunRouter
 
-    def dflt_get_next_point_callback(name, doc):
-        nonlocal count
-        # some logic to covert to adaptive food
-        # this gets every document, you might want to use
-        # DocumentRouter or RunRouter from event_model
-        collected_data = ...
-        if name == "stop" and count < 10:
-            adaptive.tell(collected_data)
-            (next_point,) = adaptive.ask(1)
-            queue.append(next_point)
-            count += 1
+    if queue is None:
+        queue = Queue()
 
-    return dflt_get_next_point_callback, queue
+    def callback(name, doc):
+        # TODO handle multi-stream runs with more than 1 event!
+        if name == 'start':
+            if doc['batch_count'] > max_count:
+                queue.put(None)
+                return
+
+        if name == "event_page":
+            payload = doc["data"]
+            # This is your "motor positions"
+            independent = np.asarray([payload[k][-1] for k in independent_keys])
+            # This is the extracted measurements
+            measurement = np.asarray([payload[k][-1] for k in dependent_keys])
+            # call something to get next point!
+            next_point = independent + step
+            queue.put({k: v for k, v in zip(independent_keys, next_point)})
+
+    rr = RunRouter([lambda name, doc: ([callback], [])])
+    return rr, queue
 
 
-def adaptive_inter_run_scan(dets, motors, adaptive, *, md=None, callback, queue):
-    md = md or {}
-    count = 0
+def per_start_adaptive_plan(
+    dets, first_point, *, to_brains, from_brains, md=None, take_reading=bp.count
+):
+    """
+    Execute an adaptive scan using an inter-run recommendation engine.
 
-    if next_point_callback is None:
-        next_point_callback = dflt_get_next_point_callback
+    Parameters
+    ----------
+    dets : List[OphydObj]
+       The detector to read at each point.  The dependent keys that the
+       recommendation engine is looking for must be provided by these
+       devices.
 
-    (first_point,) = adaptive.ask(1)
-    queue.append(first_point)
+    first_point : Dict[Settable, Any]
+       The first point of the scan.  The motors that will be scanned
+       are extracted from the keys.  The independent keys that the
+       recommendation engine is looking for / returning must be provided
+       by these devices.
 
-    @bpp.subs_decorator(next_point_callback)
+    to_brains : Callable[str, dict]
+       This is the callback that will be registered to the RunEngine.
+
+       The expected contract is for each event it will place either a
+       dict mapping independent variable to recommended value or None.
+
+       This plan will either move to the new position and take data
+       if the value is a dict or end the run if `None`
+
+    from_brains : Queue
+       The consumer side of the Queue that the recommendation engine is
+       putting the recommendations onto.
+
+    md : dict[str, Any], optional
+       Any extra meta-data to put in the Start document
+
+    take_reading : plan, optional
+        function to do the actual acquisition ::
+
+           def take_reading(dets, name='primary'):
+                yield from ...
+
+        Callable[List[OphydObj], Optional[str]] -> Generator[Msg], optional
+
+        Defaults to `trigger_and_read`
+    """
+    # extract the motors
+    motors = list(first_point.keys())
+    # convert the first_point variable to from we will be getting
+    # from queue
+    first_point = {m.name: v for m, v in first_point.items()}
+
+    _md = {"adaptive_uid": str(uuid.uuid4())}
+
+    _md.update(md or {})
+
+    @bpp.subs_decorator(to_brains)
     def gp_inner_plan():
         uids = []
-        while len(queue):
-            next_point = queue.pop()
-            motor_position_pairs = chain_zip(motors, next_point)
+        next_point = first_point
+        for j in itertools.count():
+            # this assumes that m.name == the key in Event
+            target = {m: next_point[m.name] for m in motors}
+            motor_position_pairs = itertools.chain(*target.items())
+
             yield from bps.mov(*motor_position_pairs)
-            uid = yield from bp.count(dets + motors, md=md)
+            uid = yield from take_reading(dets + motors, md={**_md, "batch_count": j})
             uids.append(uid)
+
+            next_point = from_brains.get(timeout=1)
+            if next_point is None:
+                return
 
         return uids
 
