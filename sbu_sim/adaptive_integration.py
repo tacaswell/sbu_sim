@@ -43,32 +43,32 @@ def chain_zip(motors, next_point):
     return list(itertools.chain(*zip(motors, next_point)))
 
 
-def extract_arrays(endogenous_keys, exogenous_keys, payload):
+def extract_arrays(independent_keys, dependent_keys, payload):
     """
-    Extract the endogenous and exogenous data from Event['data'].
+    Extract the independent and dependent data from Event['data'].
 
     Parameters
     ----------
-    endogenous_keys : List[str]
-        The names of the endogenous keys in the events
+    independent_keys : List[str]
+        The names of the independent keys in the events
 
-    exogenous_keys : List[str]
-        The names of the exogenous keys in the events
+    dependent_keys : List[str]
+        The names of the dependent keys in the events
     payload : dict[str, Any]
         The ev['data'] dict from an Event Model Event document.
 
     Returns
     -------
     independent : np.array
-        A numpy array where the first axis maps to the endogenous variables
+        A numpy array where the first axis maps to the independent variables
 
     measurements : np.array
-        A numpy array where the first axis maps to the exogenous variables
+        A numpy array where the first axis maps to the dependent variables
 
     """
-    independent = np.asarray([payload[k] for k in endogenous_keys])
+    independent = np.asarray([payload[k] for k in independent_keys])
     # This is the extracted measurements
-    measurement = np.asarray([payload[k] for k in exogenous_keys])
+    measurement = np.asarray([payload[k] for k in dependent_keys])
     return independent, measurement
 
 
@@ -82,7 +82,7 @@ def extract_arrays(endogenous_keys, exogenous_keys, payload):
 
 
 def intra_plan_sequence_factory(
-    sequence, endogenous_keys, exogenous_keys, *, max_count=10, queue=None
+    sequence, independent_keys, dependent_keys, *, max_count=10, queue=None
 ):
     """
     Generate the callback and queue for a naive recommendation engine.
@@ -92,7 +92,7 @@ def intra_plan_sequence_factory(
 
     For each Event that the callback sees it will place either a
     recommendation or `None` into the queue.  Recommendations will be
-    of a dict mapping the endogenous_keys to the recommended values and
+    of a dict mapping the independent_keys to the recommended values and
     should be interpreted by the plan as a request for more data.  A `None`
     placed in the queue should be interpreted by the plan as in instruction to
     terminate the run.
@@ -103,11 +103,11 @@ def intra_plan_sequence_factory(
     sequence : iterable of positions
         This should be an iterable of positions vectors that match the motors
 
-    endogenous_keys : List[str]
-        The names of the endogenous keys in the events
+    independent_keys : List[str]
+        The names of the independent keys in the events
 
-    exogenous_keys : List[str]
-        The names of the exogenous keys in the events
+    dependent_keys : List[str]
+        The names of the dependent keys in the events
 
     max_count : int, optional
         The maximum number of measurements to take before poisoning the queue.
@@ -140,17 +140,17 @@ def intra_plan_sequence_factory(
                 queue.put(None)
                 return
             payload = doc["data"]
-            inp = np.asarray([payload[k] for k in endogenous_keys])
-            measurement = np.asarray([payload[k] for k in exogenous_keys])
+            inp = np.asarray([payload[k] for k in independent_keys])
+            measurement = np.asarray([payload[k] for k in dependent_keys])
             # call something to get next point!
             next_point = next(seq)
-            queue.put({k: v for k, v in zip(endogenous_keys, next_point)})
+            queue.put({k: v for k, v in zip(independent_keys, next_point)})
 
     return callback, queue
 
 
 def intra_plan_step_factory(
-    step, endogenous_keys, exogenous_keys, *, max_count=10, queue=None
+    step, independent_keys, dependent_keys, *, max_count=10, queue=None
 ):
     """
     Generate the callback and queue for a naive recommendation engine.
@@ -159,7 +159,7 @@ def intra_plan_step_factory(
 
     For each Event that the callback sees it will place either a
     recommendation or `None` into the queue.  Recommendations will be
-    of a dict mapping the endogenous_keys to the recommended values and
+    of a dict mapping the independent_keys to the recommended values and
     should be interpreted by the plan as a request for more data.  A `None`
     placed in the queue should be interpreted by the plan as in instruction to
     terminate the run.
@@ -170,11 +170,11 @@ def intra_plan_step_factory(
     step : array[float]
         The delta step to take on each point
 
-    endogenous_keys : List[str]
-        The names of the endogenous keys in the events
+    independent_keys : List[str]
+        The names of the independent keys in the events
 
-    exogenous_keys : List[str]
-        The names of the exogenous keys in the events
+    dependent_keys : List[str]
+        The names of the dependent keys in the events
 
     max_count : int, optional
         The maximum number of measurements to take before poisoning the queue.
@@ -208,26 +208,26 @@ def intra_plan_step_factory(
                 return
             payload = doc["data"]
             # This is your "motor positions"
-            independent = np.asarray([payload[k][-1] for k in endogenous_keys])
+            independent = np.asarray([payload[k][-1] for k in independent_keys])
             # This is the extracted measurements
-            measurement = np.asarray([payload[k][-1] for k in exogenous_keys])
+            measurement = np.asarray([payload[k][-1] for k in dependent_keys])
             # call something to get next point!
             next_point = independent + step
-            queue.put({k: v for k, v in zip(endogenous_keys, next_point)})
+            queue.put({k: v for k, v in zip(independent_keys, next_point)})
 
     rr = RunRouter([lambda name, doc: ([callback], [])])
     return rr, queue
 
 
 def intra_plan_gpcam_factory(
-    gpcam_object, endogenous_keys, exogenous_keys, *, max_count=10, queue=None
+    gpcam_object, independent_keys, dependent_keys, *, max_count=10, queue=None
 ):
     """
     Generate the callback and queue for gpCAM integration.
 
     For each Event that the callback sees it will place either a
     recommendation or `None` into the queue.  Recommendations will be
-    of a dict mapping the endogenous_keys to the recommended values and
+    of a dict mapping the independent_keys to the recommended values and
     should be interpreted by the plan as a request for more data.  A `None`
     placed in the queue should be interpreted by the plan as in instruction to
     terminate the run.
@@ -238,11 +238,11 @@ def intra_plan_gpcam_factory(
     pgcam_object : gpCAM
         The gpcam recommendation engine
 
-    endogenous_keys : List[str]
-        The names of the endogenous keys in the events
+    independent_keys : List[str]
+        The names of the independent keys in the events
 
-    exogenous_keys : List[str]
-        The names of the exogenous keys in the events
+    dependent_keys : List[str]
+        The names of the dependent keys in the events
 
     max_count : int, optional
         The maximum number of measurements to take before poisoning the queue.
@@ -299,16 +299,19 @@ def intra_run_adaptive_plan(
     """
     Execute an adaptive scan using an intra-run recommendation engine.
 
+    The communication pattern here is that there is 1 recommendation for
+    each Event that is generate
+
     Parameters
     ----------
     dets : List[OphydObj]
-       The detector to read at each point.  The exogenous keys that the
+       The detector to read at each point.  The dependent keys that the
        recommendation engine is looking for must be provided by these
        devices.
 
     first_point : Dict[Settable, Any]
        The first point of the scan.  The motors that will be scanned
-       are extracted from the keys.  The endogenous keys that the
+       are extracted from the keys.  The independent keys that the
        recommendation engine is looking for / returning must be provided
        by these devices.
 
@@ -316,7 +319,7 @@ def intra_run_adaptive_plan(
        This is the callback that will be registered to the RunEngine.
 
        The expected contract is for each event it will place either a
-       dict mapping endogenous variable to recommended value or None.
+       dict mapping independent variable to recommended value or None.
 
        This plan will either move to the new position and take data
        if the value is a dict or end the run if `None`
