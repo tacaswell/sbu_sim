@@ -267,22 +267,23 @@ def per_event_plan_gpcam_factory(
 
     # TODO handle multi-stream runs!
     def callback(name, doc):
-        if name != "event":
-            return
-
-        if doc["seq_num"] > max_count:
-            # if at max number of points, return early
-            queue.put(None)
-            return
-        independent, measurement = extract_arrays(
-            endogenous_keys, exogenous_keys, doc["data"]
-        )
-        # # GPCAM CODE GOES HERE
-        raise NotImplementedError
-        gpcam_object.tell(independent, measurement)
-        next_point = gpcam_object.ask(1)
-        # # GPCAM CODE GOES HERE
-        queue.put({k: v for k, v in zip(endogenous_keys, next_point)})
+        if name == "event_page":
+            if doc["seq_num"][-1] > max_count:
+                # if at max number of points poison the queue and return early
+                queue.put(None)
+                return
+            payload = doc["data"]
+            # This is your "motor positions"
+            independent = np.asarray([payload[k][-1] for k in independent_keys])
+            # This is the extracted measurements
+            measurement = np.asarray([payload[k][-1] for k in dependent_keys])
+            # call something to get next point!
+            # # GPCAM CODE GOES HERE
+            raise NotImplementedError
+            gpcam_object.tell(independent, measurement)
+            next_point = gpcam_object.ask(1)
+            # # GPCAM CODE GOES HERE
+            queue.put({k: v for k, v in zip(independent_keys, next_point)})
 
     return callback, queue
 
