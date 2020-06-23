@@ -81,7 +81,7 @@ def extract_arrays(independent_keys, dependent_keys, payload):
 # This is a "fine" grained integration of the adaptive logic into data acquisition.
 
 
-def intra_plan_sequence_factory(
+def per_event_plan_sequence_factory(
     sequence, independent_keys, dependent_keys, *, max_count=10, queue=None
 ):
     """
@@ -149,7 +149,7 @@ def intra_plan_sequence_factory(
     return callback, queue
 
 
-def intra_plan_step_factory(
+def per_event_plan_step_factory(
     step, independent_keys, dependent_keys, *, max_count=10, queue=None
 ):
     """
@@ -219,7 +219,7 @@ def intra_plan_step_factory(
     return rr, queue
 
 
-def intra_plan_gpcam_factory(
+def per_event_plan_gpcam_factory(
     gpcam_object, independent_keys, dependent_keys, *, max_count=10, queue=None
 ):
     """
@@ -287,7 +287,7 @@ def intra_plan_gpcam_factory(
     return callback, queue
 
 
-def intra_run_adaptive_plan(
+def per_event_adaptive_plan(
     dets,
     first_point,
     *,
@@ -297,7 +297,7 @@ def intra_run_adaptive_plan(
     take_reading=bps.trigger_and_read
 ):
     """
-    Execute an adaptive scan using an intra-run recommendation engine.
+    Execute an adaptive scan using an per event-run recommendation engine.
 
     The communication pattern here is that there is 1 recommendation for
     each Event that is generate
