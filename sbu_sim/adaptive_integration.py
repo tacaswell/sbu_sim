@@ -1,5 +1,4 @@
 """Tools to integrate adaptive decsion making with Bluesky."""
-from collections import deque
 import uuid
 import itertools
 from queue import Queue
@@ -9,6 +8,8 @@ import numpy as np
 import bluesky.preprocessors as bpp
 import bluesky.plan_stubs as bps
 import bluesky.plans as bp
+
+from event_model import RunRouter, SingleRunDocumentRouter
 
 
 def chain_zip(motors, next_point):
@@ -71,6 +72,31 @@ def extract_arrays(independent_keys, dependent_keys, payload):
     # This is the extracted measurements
     measurement = np.asarray([payload[k] for k in dependent_keys])
     return independent, measurement
+
+
+class StepAdaptive:
+    """A very naive recommendation engine that takes a fixed step forward."""
+
+    def __init__(self, step):
+        """
+
+        Parameters
+        ----------
+        step : array
+
+        """
+        self.step = step
+        self.next_point = None
+
+    def tell(self, x, y):
+        self.next_point = x + self.step
+
+    def ask(self, n, tell_pending=True):
+        if n != 1:
+            raise NotImplementedError
+        if self.next_point is None:
+            raise RuntimeError
+        return self.next_point
 
 
 # These tools are for integrating the adaptive logic inside of a run.
@@ -195,7 +221,6 @@ def per_event_plan_step_factory(
         is always returned (even if the user passed it in).
 
     """
-    from event_model import RunRouter
 
     if queue is None:
         queue = Queue()
@@ -280,7 +305,6 @@ def per_event_plan_gpcam_factory(
             measurement = np.asarray([payload[k][-1] for k in dependent_keys])
             # call something to get next point!
             # # GPCAM CODE GOES HERE
-            raise NotImplementedError
             gpcam_object.tell(independent, measurement)
             next_point = gpcam_object.ask(1)
             # # GPCAM CODE GOES HERE
@@ -378,11 +402,11 @@ def per_event_adaptive_plan(
 
 # These functions are for integrating adaptive logic that works
 # between runs.  The decision making process can expect to consume a
-# full run before having to make a suggestion about what to do next.
-# This may be desirable if there is a major time miss-match between
-# the computation and the experiment, of the data collection is not
-# amenable to streaming analysis, or the natural structure of the
-# experiment dictates.
+# full run before having to make a recommendation about what to do
+# next.  This may be desirable if there is a major time miss-match
+# between the computation and the experiment, of the data collection
+# is not amenable to streaming analysis, or the natural structure of
+# the experiment dictates.
 #
 # This corresponds to a "middle" scale of adaptive integration into
 # data collection.
@@ -391,7 +415,51 @@ def per_event_adaptive_plan(
 def per_start_step_factory(
     step, independent_keys, dependent_keys, *, max_count=10, queue=None
 ):
-    from event_model import RunRouter
+    """
+    Generate the callback and queue for a naive recommendation engine.
+
+    This recommends a fixed step size independent of the measurement.
+
+    For each Run (aka Start) that the callback sees it will place
+    either a recommendation or `None` into the queue.  Recommendations
+    will be of a dict mapping the independent_keys to the recommended
+    values and should be interpreted by the plan as a request for more
+    data.  A `None` placed in the queue should be interpreted by the
+    plan as in instruction to terminate the run.
+
+    The StartDocuments in the stream must contain the key
+    ``'batch_count'``.
+
+
+    Parameters
+    ----------
+    step : array[float]
+        The delta step to take on each point
+
+    independent_keys : List[str]
+        The names of the independent keys in the events
+
+    dependent_keys : List[str]
+        The names of the dependent keys in the events
+
+    max_count : int, optional
+        The maximum number of measurements to take before poisoning the queue.
+
+    queue : Queue, optional
+        The communication channel for the callback to feedback to the plan.
+        If not given, a new queue will be created.
+
+    Returns
+    -------
+    callback : Callable[str, dict]
+        This function must be subscribed to RunEngine to receive the
+        document stream.
+
+    queue : Queue
+        The communication channel between the callback and the plan.  This
+        is always returned (even if the user passed it in).
+
+    """
 
     if queue is None:
         queue = Queue()
@@ -411,6 +479,165 @@ def per_start_step_factory(
             measurement = np.asarray([payload[k][-1] for k in dependent_keys])
             # call something to get next point!
             next_point = independent + step
+            queue.put({k: v for k, v in zip(independent_keys, next_point)})
+
+    rr = RunRouter([lambda name, doc: ([callback], [])])
+    return rr, queue
+
+
+def per_start_adaptive_factory(
+    adaptive_obj, independent_keys, dependent_keys, *, max_count=10, queue=None
+):
+    """
+    Generate the callback and queue for an Adaptive API backed reccomender.
+
+    This recommends a fixed step size independent of the measurement.
+
+    For each Run (aka Start) that the callback sees it will place
+    either a recommendation or `None` into the queue.  Recommendations
+    will be of a dict mapping the independent_keys to the recommended
+    values and should be interpreted by the plan as a request for more
+    data.  A `None` placed in the queue should be interpreted by the
+    plan as in instruction to terminate the run.
+
+    The StartDocuments in the stream must contain the key
+    ``'batch_count'``.
+
+
+    Parameters
+    ----------
+    adaptive_object : adaptive.BaseLearner
+        The recommendation engine
+
+    independent_keys : List[str]
+        The names of the independent keys in the events
+
+    dependent_keys : List[str]
+        The names of the dependent keys in the events
+
+    max_count : int, optional
+        The maximum number of measurements to take before poisoning the queue.
+
+    queue : Queue, optional
+        The communication channel for the callback to feedback to the plan.
+        If not given, a new queue will be created.
+
+    Returns
+    -------
+    callback : Callable[str, dict]
+        This function must be subscribed to RunEngine to receive the
+        document stream.
+
+    queue : Queue
+        The communication channel between the callback and the plan.  This
+        is always returned (even if the user passed it in).
+
+    """
+
+    if queue is None:
+        queue = Queue()
+
+    def callback(name, doc):
+        # TODO handle multi-stream runs with more than 1 event!
+        if name == 'start':
+            if doc['batch_count'] > max_count:
+                queue.put(None)
+                return
+
+        if name == "event_page":
+            payload = doc["data"]
+            # This is your "motor positions"
+            independent = np.asarray([payload[k][-1] for k in independent_keys])
+            # This is the extracted measurements
+            measurement = np.asarray([payload[k][-1] for k in dependent_keys])
+            # push into the adaptive API
+            adaptive_obj.tell(independent, measurement)
+            # pull the next point out of the adaptive API
+            next_point = adaptive_obj.ask(1)
+            queue.put({k: v for k, v in zip(independent_keys, next_point)})
+
+    rr = RunRouter([lambda name, doc: ([callback], [])])
+    return rr, queue
+
+
+def per_start_adaptive_factory_factory(
+    adaptive_factory, independent_keys, dependent_keys, *, max_count=10, queue=None
+):
+    """
+    Generate the callback and queue for a naive recommendation engine.
+
+    This recommends a fixed step size independent of the measurement.
+
+    For each Run (aka Start) that the callback sees it will place
+    either a recommendation or `None` into the queue.  Recommendations
+    will be of a dict mapping the independent_keys to the recommended
+    values and should be interpreted by the plan as a request for more
+    data.  A `None` placed in the queue should be interpreted by the
+    plan as in instruction to terminate the run.
+
+    The StartDocuments in the stream must contain the key
+    ``'batch_count'``.
+
+
+    Parameters
+    ----------
+    adaptive_factory : Callable[dict] -> adaptive.BaseLearner
+        Function that when passed a Start document will return an
+        `adaptive.BaseLearner` object ready to go
+
+    independent_keys : List[str]
+        The names of the independent keys in the events
+
+    dependent_keys : List[str]
+        The names of the dependent keys in the events
+
+    max_count : int, optional
+        The maximum number of measurements to take before poisoning the queue.
+
+    queue : Queue, optional
+        The communication channel for the callback to feedback to the plan.
+        If not given, a new queue will be created.
+
+    Returns
+    -------
+    callback : Callable[str, dict]
+        This function must be subscribed to RunEngine to receive the
+        document stream.
+
+    queue : Queue
+        The communication channel between the callback and the plan.  This
+        is always returned (even if the user passed it in).
+
+    """
+
+    if queue is None:
+        queue = Queue()
+
+    last_batch_id = None
+    adaptive_obj = None
+
+    def callback(name, doc):
+        nonlocal last_batch_id, adaptive_obj
+
+        # TODO handle multi-stream runs with more than 1 event!
+        if name == 'start':
+            if doc['batch_count'] > max_count:
+                queue.put(None)
+                return
+            if last_batch_id != doc['batch_id']:
+                last_batch_id = doc['batch_id']
+                adaptive_obj = adaptive_factory(doc)
+
+        if name == "event_page":
+            payload = doc["data"]
+            # This is your "motor positions"
+            independent = np.asarray([payload[k][-1] for k in independent_keys])
+            # This is the extracted measurements
+            measurement = np.asarray([payload[k][-1] for k in dependent_keys])
+            # push into the adaptive API
+            adaptive_obj.tell(independent, measurement)
+            # pull the next point out of the adaptive API
+            next_point = adaptive_obj.ask(1)
             queue.put({k: v for k, v in zip(independent_keys, next_point)})
 
     rr = RunRouter([lambda name, doc: ([callback], [])])
@@ -455,12 +682,14 @@ def per_start_adaptive_plan(
     take_reading : plan, optional
         function to do the actual acquisition ::
 
-           def take_reading(dets, name='primary'):
+           def take_reading(dets, md={}):
                 yield from ...
 
-        Callable[List[OphydObj], Optional[str]] -> Generator[Msg], optional
+        Callable[List[OphydObj], Optional[Dict[str, Any]]] -> Generator[Msg], optional
 
-        Defaults to `trigger_and_read`
+        This plan must generate exactly 1 Run
+
+        Defaults to `bp.count`
     """
     # extract the motors
     motors = list(first_point.keys())
@@ -468,7 +697,7 @@ def per_start_adaptive_plan(
     # from queue
     first_point = {m.name: v for m, v in first_point.items()}
 
-    _md = {"adaptive_uid": str(uuid.uuid4())}
+    _md = {"batch_id": str(uuid.uuid4())}
 
     _md.update(md or {})
 
