@@ -3,5 +3,5 @@ databroker >=1
 suitcase-msgpack
 ophyd
 bluesky
-nslsii
+nslsii >=0.0.16
 scipy
