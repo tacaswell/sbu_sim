@@ -24,7 +24,7 @@ def initialize(user_ns, broker_name, reduced_cat_name):
     import databroker
 
     ret = nslsii.configure_base(
-        user_ns, broker_name, configure_logging=False, ipython_exc_logging=False
+        user_ns, broker_name, configure_logging=False, ipython_logging=False
     )
     user_ns["db"] = user_ns["db"].v2
     ticu_sim = ticu.make_sim_devices(databroker.catalog[reduced_cat_name])
