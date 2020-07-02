@@ -43,7 +43,7 @@ as an exercise for the reader).  Once you have unzipped it do
 .. code:: bash
 
    pip install databroker-pack
-   databroker-unpack path/to/unpacked/tarbal xpd_auto_202003_msgpack
+   databroker-unpack inplace path/to/unpacked/tarbal xpd_auto_202003_msgpack
 
 
 See https://blueskyproject.io/databroker-pack/
